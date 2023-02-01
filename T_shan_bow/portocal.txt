@@ -1,0 +1,10 @@
+Windows Registry Editor Version 5.00
+[HKEY_CLASSES_ROOT\LoginElf]
+@="URL:LoginElf Protocol Handler"
+"URL Protocol"=""
+[HKEY_CLASSES_ROOT\LoginElf\DefaultIcon]
+@="C:\\Users\\user\\AppData\\Local\\Temp\\LoginElf.exe"
+[HKEY_CLASSES_ROOT\LoginElf\shell]
+[HKEY_CLASSES_ROOT\LoginElf\shell\open]
+[HKEY_CLASSES_ROOT\LoginElf\shell\open\command]
+@="\"C:\\Users\\user\\AppData\\Local\\Temp\\LoginElf.exe\" \"%1\""
