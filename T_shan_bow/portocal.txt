@@ -8,3 +8,4 @@ Windows Registry Editor Version 5.00
 [HKEY_CLASSES_ROOT\LoginElf\shell\open]
 [HKEY_CLASSES_ROOT\LoginElf\shell\open\command]
 @="\"C:\\Users\\user\\AppData\\Local\\Temp\\LoginElf.exe\" \"%1\""
+bb
