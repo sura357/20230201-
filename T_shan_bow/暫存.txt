@@ -1,0 +1,418 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+using System.Diagnostics;
+using Newtonsoft.Json;
+using System.IO;
+using UnityEngine.Events;
+using System;
+using System.Text;
+using System.IO.Compression;
+
+
+public class ViewPlan : MonoBehaviour
+{
+    string SetJson_path = @"C:\Users\" + Environment.UserName + @"\AppData\Local\Temp\SetJson.txt";
+
+    public Button ReplyStepBtn, NextStepBtn, EndBtn, CloseBtn;
+    public Text AllAction, NowAction, LoadingInfo;
+    public GameObject ShowPanel, LoadingPanel;
+
+    //bool OpenCheckStep = false;
+    //bool CheckNowStep = false;
+    bool getmotion = false;
+    bool FileDownloadOK = false;
+    bool endmotion = false;
+    string exePath = "";
+    int sid, rate;
+    //string today = "";
+
+    bool AllMotionDone_bln = false;
+
+    bool downcomplite = false;
+    List<string> downlist = new List<string>();
+    List<motionData> motionDatas = new List<motionData>();
+    bool CheckMotionData_bln = false;
+
+    public string text = "";
+
+    private void Start()
+    {
+        NextStepBtn.onClick.AddListener(NextStepClick);
+        EndBtn.onClick.AddListener(EndClick);
+        CloseBtn.onClick.AddListener(EndClick);
+        ReplyStepBtn.onClick.AddListener(ReplyStepClick);
+
+        LoadingPanel.SetActive(true);
+        ShowPanel.SetActive(false);
+        EndBtn.gameObject.SetActive(false);
+
+        main.URS_CI.vCheckMotionData += URS_CI_vCheckMotionData;
+        main.URS_CI.vCheckMotionHave += URS_CI_vCheckMotionHave;
+        main.URS_CI.vCheckFileDownload += URS_CI_vCheckFileDownload;
+        main.URS_CI.onFileDownload += URS_CI_onFileDownload;
+        _log(main.URS_CI.UserID);
+        main.URS_CI.getTodaysMotion(main.URS_CI.UserID);
+
+    }
+
+    IEnumerator Timer_timeOut()
+    {
+        yield return new WaitForSeconds(2);
+        main.URS_CI.readfile(downlist[0]);
+    }
+
+    void ActionInvoke(UnityEngine.Events.UnityAction action, ref bool Condiction)
+    {
+        if (Condiction)
+        {
+            action();
+            Condiction = !Condiction;
+        }
+    }
+
+    private void Update()
+    {
+        if (File.Exists(@"Resource\Game\SetJsonError.txt"))
+        {/*
+            string now = System.IO.File.ReadAllLines(@"Resource\Game\SetJson.txt")[0];
+            if (now == "0") _log("SetJson.txt不存在");
+            if (now == "1") _log("SetJson.txt日期錯誤");
+            if (now == "2") _log("開啟遊戲檔案錯誤");
+            return;*/
+        }
+
+        ActionInvoke(showPanel, ref CheckMotionData_bln);
+        ActionInvoke(AllMotionDone, ref AllMotionDone_bln);
+
+        //showPanel();
+        URS_CI_FileDownLoadChecker();
+        if (FileDownloadOK)
+        {
+            ShowPanel.SetActive(true);
+            LoadingPanel.SetActive(false);
+        }
+       
+        if (getmotion)
+        {
+            FileInfo f = new FileInfo(SetJson_path);
+            string s1 = DateTime.Now.ToString();
+            string s2 = f.LastWriteTime.ToString();
+            if (s1==s2)
+            {
+                string now1 = " ", now2 = " ";
+                string[] readText = File.ReadAllLines(SetJson_path);
+                foreach (string s in readText)
+                {
+                    if (s == readText[3]) now1 = s;
+                    else if (s == readText[4]) now2 = s;
+                }
+                //UnityEditor.AssetDatabase.Refresh();
+                if (sid.ToString() != now1)
+                {
+                    //_log("now1yaya");
+                    sid = Int32.Parse(now1);
+                    AllAction.text = "動作次序有變更，將重整介面";
+                    //UnityEditor.EditorUtility.DisplayDialog("提醒", "動作次序有變更，將重整介面，請重新按下一步按紐", "確認");
+                    //NowAction.text = "現在要做動作: \r\n動作" + (now1).ToString();
+                    ShowPanel.SetActive(false);
+                    LoadingPanel.SetActive(true);
+                    main.URS_CI.getTodaysMotion(main.URS_CI.UserID);
+                }
+                if (rate.ToString() != now2)
+                {
+                    //_log("now2yaya");
+                    rate = Int32.Parse(now2);
+                    main.URS_CI.addRehubRecord(rate, 1, 1, 1, sid);
+                }
+            }
+            if (endmotion)
+            {
+                AllAction.text = "今日動作已執行完畢";
+                //UnityEditor.EditorUtility.DisplayDialog("提醒", "所有動作皆已做過", "確認");
+                NowAction.text = "沒有要做的動作";
+                EndBtn.gameObject.SetActive(true);
+                NextStepBtn.gameObject.SetActive(false);
+                LoadingPanel.SetActive(false);
+                ShowPanel.SetActive(true);
+                //ShowPanel.SetActive(true);
+                //LoadingPanel.SetActive(false);
+                return;
+            }
+            //_log("getyaya");
+            //NowAction.text = "現在要做動作: \r\n動作" + (main.URS_CI.NowMotionStep + 1).ToString();
+            //CheckNowStep = false;
+            //string now1 = System.IO.File.ReadAllLines(@"Resource\Game\SetJson.txt")[3];
+            //string now2 = System.IO.File.ReadAllLines(@"Resource\Game\SetJson.txt")[4];
+        }
+    }
+    void URS_CI_FileDownLoadChecker()
+    {
+        if (main.URS_CI.FCList.Count != 0)
+            foreach (var FC in main.URS_CI.FCList)
+            {
+                if (FC.isComplete)
+                {
+                    if (FC.type == FileCI.CIType.DOWNLOAD)
+                        URS_CI_onFileDownload(FC.fileName, true);
+
+                    main.URS_CI.FCList.Remove(FC);
+
+                    break;
+                }
+                else
+                {
+                    //_log(FC.fileName + " P: " + (FC.downloadProgress*100) + "%");
+
+                    LoadingInfo.text = new string('█', Convert.ToInt16(FC.downloadProgress * 20));
+                }
+
+                if (FC.isError)
+                {
+                    if (FC.type == FileCI.CIType.DOWNLOAD)
+                        URS_CI_onFileDownload(FC.fileName, false);
+
+                    // 載入失敗
+                    main.URS_CI.FCList.Remove(FC);
+                    break;
+                }
+            }
+    }
+
+    void _log(string str)
+    {
+        UnityEngine.Debug.Log(str);
+    }
+
+    void showPanel()
+    {
+        //ShowPanel.SetActive(true);
+        //LoadingPanel.SetActive(false);
+
+        int counter = 0;
+        foreach (var M in motionDatas)
+        {
+            AllAction.text += "動作" + (counter + 1).ToString() + ": " + M.name + "\r\n";
+            counter++;
+        }
+    }
+
+    void download_Resource(int game_id)
+    {
+        string gf = motionDatas[game_id].game_file.ToString();
+        if (File.Exists(@"Resource\Video\" + motionDatas[game_id].video_file) &&
+            File.Exists(@"Resource\Motion\" + motionDatas[game_id].standard_file) &&
+            File.Exists(@"Resource\Game\" + gf.Remove(gf.Length - 4, 4).ToString() + @"\" + "URS.exe"))
+        {
+            downcomplite = true;
+            //NowAction.text = "現在要做動作: \r\n動作" + (main.URS_CI.NowMotionStep + 1).ToString();
+            //exePath = @"Resource\" + gf.Remove(gf.Length - 4, 4).ToString() + @"\" + "URS.exe";
+            exePath = Path.GetFullPath(System.IO.Path.Combine(Application.streamingAssetsPath, @"..\..\Resource\Game", gf.Remove(gf.Length - 4, 4).ToString() + @"\" + "URS.exe"));
+            if (main.URS_CI.lines == 2)
+            {
+                //exePath = Path.GetFullPath(System.IO.Path.Combine(Application.streamingAssetsPath, @"..\..\Resource\Game", filename.Remove(filename.Length - 4, 4).ToString() + @"\" + "URS.exe"));
+            }
+            FileDownloadOK = true;
+            return;
+        }
+            
+        //if (!File.Exists(@"Resource\Video\" + motionDatas[game_id].video_file))
+        downlist.Add(@"Video\" + motionDatas[game_id].video_file);
+        //if (!File.Exists(@"Resource\Motion\" + motionDatas[game_id].standard_file))
+        downlist.Add(@"Motion\" + motionDatas[game_id].standard_file);
+        //if (!File.Exists(@"Resource\Game\" + motionDatas[game_id].game_file))
+        downlist.Add(@"Game\" + motionDatas[game_id].game_file);
+
+
+        main.URS_CI.readfile(downlist[0]);
+    }
+
+
+
+    private void URS_CI_onFileDownload(string fileName, bool success)
+    {
+        if (!success)
+        {
+            //_log(fileName + "下載失敗");
+            return;
+        }
+
+        //_log(fileName + "下載成功");
+
+        downlist.RemoveAt(0);
+        if (downlist.Count != 0)
+        {
+            StartCoroutine(Timer_timeOut());
+        }
+            //main.URS_CI.readfile(downlist[0]);
+        else
+        {
+            //全部載完
+
+            LoadingPanel.SetActive(false);
+            ShowPanel.SetActive(true);
+            //_log("全部下載成功");
+            //拆zip()
+            openZip(fileName);
+        }
+
+    }
+
+    void openZip(string filename)
+    {
+        //建資料夾
+        //DirectoryInfo di = Directory.CreateDirectory(@"Resource\" + filename);
+        //把解壓的東西丟進資料夾裡
+        //ZipFile.ExtractToDirectory(@"Resource\Game\" + filename, @"Resource\Game\" + filename.Remove(filename.Length - 4, 4));
+
+        //_log(@"Resource\" + filename.Remove(filename.Length - 4, 4));
+        if (Directory.Exists(@"Resource\" + filename.Remove(filename.Length - 4, 4)))
+        {
+            DirectoryInfo directory = new DirectoryInfo(@"Resource\" + filename.Remove(filename.Length - 4, 4));
+
+            foreach (FileInfo file in directory.GetFiles())
+            {
+                //_log(file.Name);
+                file.Delete();
+            }
+
+            foreach (DirectoryInfo dir in directory.GetDirectories())
+            {
+                dir.Delete(true);
+            }
+        }
+        //ZipFile.ExtractToDirectory(@"Resource\" + filename, @"Resource\Game" + filename.Remove(filename.Length - 4, 4));
+        ZipFile.ExtractToDirectory(@"Resource\" + filename, @"Resource\Game");
+
+        //執行exe
+        //download_Resource(下一個)
+        downcomplite = true;
+
+        NowAction.text = "現在要做動作: \r\n動作" + (main.URS_CI.NowMotionStep + 1).ToString();
+        //exePath = @"Resource\" + filename.Remove(filename.Length - 4, 4).ToString() + @"\" + "URS.exe";
+        exePath = Path.GetFullPath(System.IO.Path.Combine(Application.streamingAssetsPath, @"..\..\Resource\Game", filename.Remove(filename.Length - 4, 4).ToString() + @"\" + "URS.exe"));
+        if (main.URS_CI.lines==2)
+        {
+            //exePath = Path.GetFullPath(System.IO.Path.Combine(Application.streamingAssetsPath, @"..\..\Resource\Game", filename.Remove(filename.Length - 4, 4).ToString() + @"\" + "URS.exe"));
+        }
+        ShowPanel.SetActive(true);
+        LoadingPanel.SetActive(false);
+        FileDownloadOK = true;
+        //Process.Start(@"Resource\Game\" + filename.Remove(filename.Length - 4, 4).ToString()+@"\"+"URS.exe");
+        //Process.Start(@"Resource\" + filename.Remove(filename.Length - 4, 4).ToString() + @"\" + "URS.exe"); 這是新的
+    }
+
+    private void URS_CI_vCheckFileDownload(string FileName)
+    {
+    }
+
+    void AllMotionDone()
+    {
+        AllAction.text = "今日動作已執行完畢";
+        //UnityEditor.EditorUtility.DisplayDialog("提醒", "所有動作皆已做過", "確認");
+        NowAction.text = "沒有要做的動作";
+        EndBtn.gameObject.SetActive(true);
+        NextStepBtn.gameObject.SetActive(false);
+        //ShowPanel.SetActive(true);
+        //LoadingPanel.SetActive(false);
+    }
+
+    private void URS_CI_vCheckMotionHave(string Json)
+    {
+        askHaveDoneResponse data = JsonConvert.DeserializeObject<askHaveDoneResponse>(Json);
+        try
+        {
+            if (data.execute)
+            {
+                if (main.URS_CI.NowMotionStep + 1 >= main.URS_CI.MotionCount)
+                {
+                    AllMotionDone_bln = true;
+                    return;
+                }
+                main.URS_CI.NowMotionStep++;
+                main.URS_CI.askMotionHaveDone(main.URS_CI.UserID, main.URS_CI.NowMotionStep + 1);
+            }
+            else
+            {
+
+
+                if (data.responseList.Count >= main.URS_CI.NowMotionStep + 1)
+                {
+                    endmotion = true;
+                }
+
+                //OpenCheckStep = true;
+                //CheckNowStep = true;
+                
+
+                //CheckFile = true;
+
+            }
+            //throw new System.NotImplementedException();
+        }
+        catch (Exception)
+        {
+            return;
+            //throw;
+        }
+
+    }
+
+    private void URS_CI_vCheckMotionData(string Json)
+    {
+        using (StreamWriter sw = File.AppendText(SetJson_path))
+        {
+            sw.WriteLine(Json);
+        }
+        todaysMotionResponse data = JsonConvert.DeserializeObject<todaysMotionResponse>(Json);
+
+        if (data.execute)
+        {
+            UnityEngine.Debug.Log(data.planID_id);
+            motionDatas = data.responseList;
+            CheckMotionData_bln = true;
+
+            using (StreamWriter sw = File.AppendText(SetJson_path))
+            {
+                sw.WriteLine(data.responseList[0].sid);
+            }
+            using (StreamWriter sw = File.AppendText(SetJson_path))
+            {
+                sw.WriteLine(0);
+            }
+            sid = data.responseList[0].sid;
+            rate = 0;
+            getmotion = true;
+            download_Resource(0);
+        }
+        else
+        {
+            endmotion = true;
+        }
+    }
+    private void NextStepClick()//按下開始鍵
+    {
+        if (FileDownloadOK)
+        {
+            Process.Start(exePath);
+        }
+        else
+        {
+            ShowPanel.SetActive(false);
+            LoadingPanel.SetActive(true);
+        }
+    }
+
+    private void EndClick()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+Application.Quit();
+#endif
+    }//按下結束鍵
+
+    private void ReplyStepClick() { SceneManager.LoadScene("Login"); }
+}
